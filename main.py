@@ -4,6 +4,7 @@ import sys
 import scapy.all as scapy
 import subprocess
 import pretty_lib as pl
+import time
 import ap_collector as apc
 
 BPF_BEACON = "type mgt && subtype beacon"
@@ -15,6 +16,12 @@ def signal_handler(sig):
     if (sig == signal.SIGINT):
         sys.exit(-1)
 
+def sp_error_handler(e):
+    print(f"[!] Command failed during execution with return code {e.returncode}")
+    print(f"    Command: {e.cmd}")
+    print(f"    Output: {e.output}")
+    sys.exit(-1)
+
 def get_nics():
     nics = scapy.get_if_list()
     print(pl.UNDERLINE + "You can find below the available NICs:\n" + pl.ENDC)
@@ -24,28 +31,28 @@ def get_nics():
         index+=1
 
 def set_monitor_mode(nic, flag):
-    if flag:
-        print("Enabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
-        subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
-        subprocess.run(["sudo", "iw", nic, "set", "type", "monitor"], check=True)
-        subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+    try:
+        if flag:
+            print("Enabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
+            subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
+            subprocess.run(["sudo", "iw", nic, "set", "type", "monitor"], check=True)
+            subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+        else:
+            print("Disabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
+            subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
+            subprocess.run(["sudo", "iw", nic, "set", "type", "managed"], check=True)
+            subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+        time.sleep(1)
         print(pl.BOLD + pl.GREEN + "done" + pl.ENDC)
-    else:
-        print("Disabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
-        subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
-        subprocess.run(["sudo", "iw", nic, "set", "type", "managed"], check=True)
-        subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
-        print(pl.BOLD + pl.GREEN + "done" + pl.ENDC)
-
+    except Exception as e:
+        sp_error_handler(e)
 
 def set_nic_channel(nic, channel):
-    print("Changing interface channel to -> " + str(channel))
-    subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
+    print("Changing interface channel to -> " + str(channel), end="... ")
     try:
         subprocess.run(["sudo", "iw", "dev", nic, "set", "channel", str(channel)], check=True)
     except Exception as e:
-        print(e)
-    subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+        sp_error_handler(e)
     print(pl.BOLD + pl.GREEN + "done" + pl.ENDC)
 
 def sniff_beacon_frame(nic, current_channel, ap_collector):
@@ -53,7 +60,7 @@ def sniff_beacon_frame(nic, current_channel, ap_collector):
     done=False
     while not done:
         set_nic_channel(nic, current_channel)
-        scapy.sniff(filter=BPF_BEACON, iface=nic, monitor=True, count=0, timeout=1, prn=beacon_frame_manager(ap_collector))
+        scapy.sniff(filter=BPF_BEACON, iface=nic, monitor=True, count=0, timeout=2, prn=beacon_frame_manager(ap_collector))
         current_channel+=1
         if current_channel == 13:
             done = True
@@ -113,6 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("-manm","--managed_mode", action="store_true", help="Put the specified interface in managed mode.")
     parser.add_argument("-i", "--interface", help="The network interface to use for the activities.")
     parser.add_argument("-s", "--scan", action="store_true", help="Scan on multiple channel to retrieve the nearby access points.")
+    parser.add_argument("-t", "--test", action="store_true", help="test option")
     args = parser.parse_args()
     
     if args.list:
@@ -127,6 +135,9 @@ if __name__ == "__main__":
 
     if args.scan and not args.interface:
         parser.error("The -scan option requires the -i option.")
+
+    if args.test:
+        sys.exit(1)        
 
     if args.monitor_mode:
         set_monitor_mode(args.interface, True)
