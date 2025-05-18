@@ -82,7 +82,7 @@ APET is designed **strictly for educational and research purposes**. Use it to:
 - Test captive portal behavior across devices
 
 ---
-## 🧱 Future Improvements
+## Future Improvements
 
 This project is currently in a **prototype stage** and serves as a **learning experiment**.
 
@@ -95,12 +95,12 @@ This project is currently in a **prototype stage** and serves as a **learning ex
 - Logging system and session tracking.
 
 ---
-## 📬 Contact & Contributions
+## Contact & Contributions
 
 This is a **learning-first** project, and contributions are welcome. Whether it's feature suggestions, bug fixes, or just feedback — feel free to open a pull request or issue.
 
 ---
-## 🧠 Usage example
+## Usage example
 
 You can find below an example usage to run the evil twin attack with APET. After the recon phase, the tool target the selected station with a deauth-attack and spawn the rogue ap named through the -tid param ("APET_AP" in this case).
 
