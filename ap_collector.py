@@ -23,6 +23,12 @@ class APCollector:
             util.STATIONS: []
         }
 
+    def aps_count(self):
+        return len(self.apc)
+    
+    def st_count(self, ap_id):
+        return len(self.apc[ap_id][util.STATIONS])
+
     def get_ap_data(self, ap_id):
         return self.apc[ap_id]
         
@@ -70,7 +76,7 @@ class APCollector:
         return handle_beacon_frame
       
     def sniff_data_frame(self, ap_id):
-        scapy.sniff(filter=util.BPF_DATA, iface=util.NIC_MON, monitor=True, count=0, timeout=20, prn=self.data_frame_manager(ap_id))
+        scapy.sniff(filter=util.BPF_DATA, iface=util.NIC_MON, monitor=True, count=0, timeout=10, prn=self.data_frame_manager(ap_id))
         self.pprint_stations(ap_id)
 
     def data_frame_manager(self, ap_id):

