@@ -1,5 +1,4 @@
-
-# APET - Access Point Evil Twin
+# 🦎 APET - Access Point Evil Twin
 
 > **Prototype for Educational Use Only**  
 > _Designed to explore the mechanics of deauthentication attack, Evil Twin attack, and wireless interface manipulation. This tool should only be used in **controlled environments** with **authorized devices and users**. **I am not responsible for any misuse or illegal activities** involving this software._
