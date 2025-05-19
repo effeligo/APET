@@ -10,6 +10,7 @@ import twin_manager
 import cleanup_coordinator
 from yaspin import yaspin
 
+sel = False
 
 def get_nics():
     nics = pyw.winterfaces()
@@ -33,7 +34,7 @@ def collect_stations(obj, ap_id):
     
 if __name__ == "__main__":
     util.print_banner()
-    cc = cleanup_coordinator.CleanupCoordinator()
+    cc = cleanup_coordinator.CleanupCoordinator(False)
     signal.signal(signal.SIGINT, util.signal_handler_factory(cc)) 
     parser = ap.ArgumentParser(
         prog="apet",
@@ -115,11 +116,11 @@ if __name__ == "__main__":
                 print("[*] No access point detected! Exit ... ")
                 cc.cleanup_all()
                 sys.exit(1)
-            sel = False
-            while(not sel):
+            cc.set_sel(False)
+            while(not cc.get_sel()):
                 ap_id = input("Please, select the target AP to start the stations collections: ")
                 if ap_id is not None and (0 <= int(ap_id) < ap_count):
-                    sel = True
+                    cc.set_sel(True)
                 else:
                     print("[*] Bad selection! Please retry with a valid access point id ...")
             collect_stations(ap_collector, ap_id)
@@ -128,11 +129,11 @@ if __name__ == "__main__":
                 print("[*] No stations detected for the selected access point! Exit ... ")
                 cc.cleanup_all()
                 sys.exit(1)
-            sel = False
-            while(not sel):
+            cc.set_sel(False)
+            while(not cc.get_sel()):
                 station_id = input("Please, select a valid station id to deauthenticate for evil twin attack: ")
                 if 0 <= int(station_id) < station_count:
-                    sel = True
+                    cc.set_sel(True)
                 else:
                     print("[*] Bad selection! Please retry with a valid station id ...")
             selected_ap = ap_collector.get_ap_data(int(ap_id))
