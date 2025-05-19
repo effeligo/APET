@@ -76,18 +76,36 @@ class APCollector:
         return handle_beacon_frame
       
     def sniff_data_frame(self, ap_id):
-        scapy.sniff(filter=util.BPF_DATA, iface=util.NIC_MON, monitor=True, count=0, timeout=10, prn=self.data_frame_manager(ap_id))
+        scapy.sniff(iface=util.NIC_MON, monitor=True, count=0, timeout=60, prn=self.data_frame_manager(ap_id))
         self.pprint_stations(ap_id)
 
     def data_frame_manager(self, ap_id):
+        ap_bssid = self.apc[ap_id][util.BSSID]
         def handle_data_frame(pkt):
-            for payload in pkt.iterpayloads():
-                if payload.name == "802.11":
-                    ap_mac = payload.getfieldval("addr1")
-                    station_mac = payload.getfieldval("addr2")
-                    if ap_mac == self.apc[ap_id][util.BSSID] and station_mac not in self.apc[ap_id][util.STATIONS]:
-                        self.apc[ap_id][util.STATIONS].append(station_mac)
-                        break
+            if not pkt.haslayer(scapy.Dot11):
+                return
+
+            dot11 = pkt[scapy.Dot11]
+            fcfield = dot11.FCfield
+
+            addr1 = dot11.addr1
+            addr2 = dot11.addr2
+
+            if fcfield & 0x01:  # ToDS
+                ap_mac = addr1
+                station_mac = addr2
+            elif fcfield & 0x02:  # FromDS
+                ap_mac = addr2
+                station_mac = addr1
+            else:
+                return
+
+            if ap_mac != ap_bssid:
+                return
+            if station_mac and station_mac not in self.apc[ap_id][util.STATIONS]:
+                # print(f"[+] Found new station: {station_mac}")
+                self.apc[ap_id][util.STATIONS].append(station_mac)
+
         return handle_data_frame
 
     def update(self, ssid, bssid, ch, chfreq, sigstren, drate, cn, vend):
